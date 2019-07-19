@@ -1,9 +1,27 @@
 import React, { Component, Fragment } from 'react';
-import Typist from 'react-typist'
-import 'bootstrap';
+import firebase from 'firebase/app';
+import 'firebase/firestore';
+import Typist from 'react-typist';
+import Button from 'react-bootstrap/Button'
+import Modal from 'react-bootstrap/Modal'
+import InputGroup from 'react-bootstrap/InputGroup'
+import FormControl from 'react-bootstrap/FormControl'
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
 
+const firebaseConfig = {
+  apiKey: "AIzaSyAA6hwI0AfHDJPecEq2JevGfeFnDIJbAiw",
+  authDomain: "tstest-e07a3.firebaseapp.com",
+  databaseURL: "https://tstest-e07a3.firebaseio.com",
+  projectId: "tstest-e07a3",
+  storageBucket: "",
+  messagingSenderId: "345848862403",
+  appId: "1:345848862403:web:3dfd72fbaa7f0ec6"
+};
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+
+const db = firebase.firestore();
 
 class Timer extends Component {
 
@@ -29,6 +47,36 @@ class Timer extends Component {
   }
 };
 
+function SaveModal(props) {
+  return (
+    <Modal
+      show={props.show}
+      size="lg"
+      aria-labelledby="contained-modal-title-vcenter"
+      centered
+    >
+      <Modal.Header closeButton>
+        <Modal.Title id="contained-modal-title-vcenter">
+          Save
+        </Modal.Title>
+      </Modal.Header>
+      <Modal.Body>
+        <h4 className="mb-3 text-center">save your score</h4>
+        <InputGroup className="mb-3">
+          <InputGroup.Prepend>
+            <InputGroup.Text>name</InputGroup.Text>
+          </InputGroup.Prepend>
+          <FormControl onChange={props.setName} />
+        </InputGroup>
+      </Modal.Body>
+      <Modal.Footer>
+        <Button variant="success" onClick={props.saveScore}>Save</Button>
+        <Button variant="dark" onClick={props.onHide}>Close</Button>
+      </Modal.Footer>
+    </Modal>
+  );
+}
+
 class App extends Component {
 
   state = {
@@ -36,13 +84,17 @@ class App extends Component {
     typedTxt: '',
     borderClr: 'secondary',
     timerRunning: false,
+    showSave: false,
+    name: 'unnamed',
     startTime: '',
     finishTime: 0,
-    typos: 0
+    typos: 0,
+    scoreboard: [],
   }
 
   componentDidMount() {
     this.fetchRandomTxt()
+    this.fetchScoreboard()
   }
 
   componentDidUpdate(prevProps, prevState) {
@@ -57,6 +109,7 @@ class App extends Component {
         case this.state.testTxt:
           this.setState({ borderClr: 'info' })
           this.stopTimer()
+          this.ShowSave(true);
           break
         case this.state.testTxt.substring(0, this.state.typedTxt.length):
           this.setState({ borderClr: 'success', })
@@ -73,7 +126,7 @@ class App extends Component {
     fetch("https://www.randomtext.me/api/gibberish/p-1/10-10")
       .then(rsp => rsp.json())
       .then(testTxt => this.setState({ testTxt: testTxt.text_out.slice(3, -6) }))
-      this.reset()
+    this.reset()
   }
 
   updateTypedTxt = (e) => {
@@ -81,6 +134,13 @@ class App extends Component {
       { typedTxt: e.target.value }
     )
   }
+
+  setName = (e) => {
+    this.setState(
+      { name: e.target.value }
+    )
+  }
+
 
   startTimer = () => {
     this.setState({ timerRunning: true, startTime: Date.now() })
@@ -99,19 +159,43 @@ class App extends Component {
 
   }
 
+  ShowSave = (val) => { this.setState({ showSave: val }) };
+
+  saveScore = () => {
+    let score = {
+      name: this.state.name,
+      date: this.state.startTime,
+      time: this.state.finishTime,
+      typos: this.state.typos
+    }    
+    this.setState({scoreboard: this.state.scoreboard.concat([score])})
+    this.setState({ showSave: false })
+
+    db.collection('scoreboard').add(score).then(rsp => {
+    })
+  }
+
+  fetchScoreboard = () => {
+    db.collection('scoreboard').orderBy("time", "desc").get().then(snapshot => {
+      let scores = [];
+      snapshot.docs.forEach(item => scores.push(item.data()))
+      this.setState({ scoreboard: scores })
+    })
+  }
+
   render() {
     return (
       <div className="App">
         <header className='bg-primary'>
           <h1 className='h3 p-3 text-white text-center'>
-          <Typist avgTypingDelay={100} cursor={{
-            show: true,
-            blink: true,
-            element: '|',
-            hideWhenDone: true,
-            hideWhenDoneDelay: 1000,
-          }}>
-            <small>Welcome to </small>Typing Speed Test
+            <Typist avgTypingDelay={100} cursor={{
+              show: true,
+              blink: true,
+              element: '|',
+              hideWhenDone: true,
+              hideWhenDoneDelay: 1000,
+            }}>
+              <small>Welcome to </small>Typing Speed Test
           </Typist>
           </h1>
         </header>
@@ -139,7 +223,42 @@ class App extends Component {
                   {this.state.timerRunning && <Timer ref='timer' start={this.state.startTime} />}</div>
                 <div className='mx-2'>Typos: {this.state.typos}</div>
               </section>
+
+              <SaveModal show={this.state.showSave} onHide={() => this.ShowSave(false)} saveScore={this.saveScore} setName={this.setName} />
+
+              <h3 className='p-3 text-center'>scoreboard</h3>
+
+              {this.state.scoreboard.length === 0 ? <div className="spinner mt-3">
+                <div className="bounce1"></div>
+                <div className="bounce2"></div>
+                <div className="bounce3"></div>
+              </div> :
+
+                <div className="col-md-9 col-lg-6 mx-auto table-responsive">
+                  <table className="table table-striped">
+                    <thead className="thead-dark">
+                      <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">Name</th>
+                        <th scope="col">Time</th>
+                        <th scope="col">Typos</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+
+                      {this.state.scoreboard.map((item, index) => <tr key={index + 1}>
+                        <th scope="row">{index + 1}</th>
+                        <td>{item.name}</td>
+                        <td>{item.time} seconds</td>
+                        <td>{item.typos}</td>
+                      </tr>)}
+
+                    </tbody>
+                  </table>
+                </div>}
+
             </Fragment>}
+
         </main>
 
       </div>
